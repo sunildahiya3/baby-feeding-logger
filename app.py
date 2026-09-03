@@ -38,9 +38,13 @@ def init_db():
                 feed_type VARCHAR(50) NOT NULL,
                 date_str VARCHAR(20) NOT NULL,
                 time_str VARCHAR(20) NOT NULL,
+                duration_minutes INTEGER,
+                quantity_ml INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         ''')
+        cursor.execute('ALTER TABLE feeding_logs ADD COLUMN IF NOT EXISTS duration_minutes INTEGER')
+        cursor.execute('ALTER TABLE feeding_logs ADD COLUMN IF NOT EXISTS quantity_ml INTEGER')
     else:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS feeding_logs (
@@ -48,13 +52,22 @@ def init_db():
                 feed_type TEXT NOT NULL,
                 date_str TEXT NOT NULL,
                 time_str TEXT NOT NULL,
+                duration_minutes INTEGER,
+                quantity_ml INTEGER,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
         ''')
+        columns = {row[1] for row in cursor.execute('PRAGMA table_info(feeding_logs)')}
+        if 'duration_minutes' not in columns:
+            cursor.execute('ALTER TABLE feeding_logs ADD COLUMN duration_minutes INTEGER')
+        if 'quantity_ml' not in columns:
+            cursor.execute('ALTER TABLE feeding_logs ADD COLUMN quantity_ml INTEGER')
     
     conn.commit()
     cursor.close()
     conn.close()
+
+init_db()
 
 # Helper function to get current time in Indian Standard Time (IST)
 def get_ist_now():
@@ -95,9 +108,30 @@ def add_feed():
 
     data = request.get_json()
     feed_type = data.get('feed_type')
+    duration_minutes = data.get('duration_minutes')
+    quantity_ml = data.get('quantity_ml')
 
     if not feed_type:
         return jsonify({"status": "error", "message": "Feeding type required"}), 400
+
+    valid_types = {'Breast Milk', 'Formula Milk', 'Pumped Milk', 'Urination', 'Potty'}
+    if feed_type not in valid_types:
+        return jsonify({"status": "error", "message": "Invalid event type"}), 400
+
+    try:
+        duration_minutes = int(duration_minutes) if duration_minutes not in (None, '') else None
+        quantity_ml = int(quantity_ml) if quantity_ml not in (None, '') else None
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Measurements must be whole numbers"}), 400
+
+    if duration_minutes is not None and duration_minutes <= 0:
+        return jsonify({"status": "error", "message": "Duration must be greater than zero"}), 400
+    if quantity_ml is not None and quantity_ml <= 0:
+        return jsonify({"status": "error", "message": "Quantity must be greater than zero"}), 400
+    if feed_type == 'Breast Milk' and duration_minutes is None:
+        return jsonify({"status": "error", "message": "Duration is required for Breast Milk"}), 400
+    if feed_type in {'Formula Milk', 'Pumped Milk'} and quantity_ml is None:
+        return jsonify({"status": "error", "message": "Quantity is required for milk"}), 400
 
     # Get current timestamp strictly in IST
     ist_now = get_ist_now()
@@ -109,20 +143,20 @@ def add_feed():
     
     if DATABASE_URL:
         cursor.execute('''
-            INSERT INTO feeding_logs (feed_type, date_str, time_str)
-            VALUES (%s, %s, %s)
-        ''', (feed_type, date_str, time_str))
+            INSERT INTO feeding_logs (feed_type, date_str, time_str, duration_minutes, quantity_ml)
+            VALUES (%s, %s, %s, %s, %s)
+        ''', (feed_type, date_str, time_str, duration_minutes, quantity_ml))
     else:
         cursor.execute('''
-            INSERT INTO feeding_logs (feed_type, date_str, time_str)
-            VALUES (?, ?, ?)
-        ''', (feed_type, date_str, time_str))
+            INSERT INTO feeding_logs (feed_type, date_str, time_str, duration_minutes, quantity_ml)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (feed_type, date_str, time_str, duration_minutes, quantity_ml))
 
     conn.commit()
     cursor.close()
     conn.close()
 
-    return jsonify({"status": "success", "entry": {"feed_type": feed_type, "date": date_str, "time": time_str}})
+    return jsonify({"status": "success", "entry": {"feed_type": feed_type, "date": date_str, "time": time_str, "duration_minutes": duration_minutes, "quantity_ml": quantity_ml}})
 
 @app.route('/api/records', methods=['GET'])
 def get_records():
@@ -132,15 +166,14 @@ def get_records():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute('SELECT feed_type, date_str, time_str FROM feeding_logs ORDER BY id DESC')
+    cursor.execute('SELECT feed_type, date_str, time_str, duration_minutes, quantity_ml FROM feeding_logs ORDER BY id DESC')
     rows = cursor.fetchall()
     
     cursor.close()
     conn.close()
 
-    records = [{"feed_type": r[0], "date": r[1], "time": r[2]} for r in rows]
+    records = [{"feed_type": r[0], "date": r[1], "time": r[2], "duration_minutes": r[3], "quantity_ml": r[4]} for r in rows]
     return jsonify(records)
 
 if __name__ == '__main__':
-    init_db()
     app.run(host='0.0.0.0', port=5000, debug=True)

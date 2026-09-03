@@ -93,6 +93,27 @@
             width: 18px;
             height: 18px;
         }
+        .measurement {
+            display: none;
+            margin: -8px 0 16px 30px;
+        }
+        .measurement label {
+            display: block;
+            color: #64748b;
+            font-size: 0.85rem;
+            margin-bottom: 5px;
+        }
+        .measurement input, .filter-select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+        .filter-select {
+            margin: 0 0 8px;
+        }
         .btn-submit {
             width: 100%;
             padding: 14px;
@@ -138,7 +159,7 @@
 
     <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('logTab', event)">Log Feed</button>
-        <button class="tab-btn" onclick="switchTab('recordsTab', event)">Feeding Records</button>
+        <button class="tab-btn" onclick="switchTab('recordsTab', event)">Records</button>
     </div>
 
     <!-- TAB 1: LOG FEED -->
@@ -149,27 +170,51 @@
                     <input type="radio" name="feed_type" value="Breast Milk" checked>
                     <span>Breast Milk</span>
                 </label>
+                <div id="durationField" class="measurement">
+                    <label for="durationMinutes">Duration (minutes)</label>
+                    <input id="durationMinutes" type="number" min="1" step="1" placeholder="e.g. 20">
+                </div>
                 <label class="radio-card">
                     <input type="radio" name="feed_type" value="Formula Milk">
                     <span>Formula Milk</span>
                 </label>
+                <div id="formulaQuantityField" class="measurement">
+                    <label for="formulaQuantityMl">Volume (ml)</label>
+                    <input id="formulaQuantityMl" type="number" min="1" step="1" placeholder="e.g. 120">
+                </div>
                 <label class="radio-card">
-                    <input type="radio" name="feed_type" value="Solid Food">
-                    <span>Solid Food</span>
+                    <input type="radio" name="feed_type" value="Pumped Milk">
+                    <span>Pumped Milk</span>
+                </label>
+                <div id="pumpedQuantityField" class="measurement">
+                    <label for="pumpedQuantityMl">Quantity (ml)</label>
+                    <input id="pumpedQuantityMl" type="number" min="1" step="1" placeholder="e.g. 90">
+                </div>
+                <label class="radio-card">
+                    <input type="radio" name="feed_type" value="Urination">
+                    <span>Urination</span>
+                </label>
+                <label class="radio-card">
+                    <input type="radio" name="feed_type" value="Potty">
+                    <span>Potty</span>
                 </label>
             </div>
-            <button type="submit" class="btn-submit">Record Timing (IST)</button>
+            <button type="submit" class="btn-submit">Record (IST)</button>
         </form>
     </div>
 
     <!-- TAB 2: RECORDS -->
     <div id="recordsTab" class="tab-content">
+        <select id="typeFilter" class="filter-select" aria-label="Filter records by type" onchange="renderRecords()">
+            <option value="all">All types</option>
+        </select>
         <table>
             <thead>
                 <tr>
                     <th>Type</th>
                     <th>Date (DD MM YYYY)</th>
                     <th>Time (HH MM IST)</th>
+                    <th>Details</th>
                 </tr>
             </thead>
             <tbody id="recordsBody">
@@ -195,35 +240,71 @@ function switchTab(tabId, event) {
 document.getElementById('feedForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const feedType = document.querySelector('input[name="feed_type"]:checked').value;
+    const body = { feed_type: feedType };
+    if (feedType === 'Breast Milk') body.duration_minutes = document.getElementById('durationMinutes').value;
+    if (feedType === 'Formula Milk') body.quantity_ml = document.getElementById('formulaQuantityMl').value;
+    if (feedType === 'Pumped Milk') body.quantity_ml = document.getElementById('pumpedQuantityMl').value;
 
     const response = await fetch('/api/feed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ feed_type: feedType })
+        body: JSON.stringify(body)
     });
 
     if (response.ok) {
         alert('Feeding logged in IST!');
         switchTab('recordsTab');
+    } else {
+        const error = await response.json();
+        alert(error.message || 'Unable to record event');
     }
 });
+
+document.querySelectorAll('input[name="feed_type"]').forEach(input => input.addEventListener('change', updateMeasurementFields));
+
+function updateMeasurementFields() {
+    const feedType = document.querySelector('input[name="feed_type"]:checked').value;
+    document.getElementById('durationField').style.display = feedType === 'Breast Milk' ? 'block' : 'none';
+    document.getElementById('formulaQuantityField').style.display = feedType === 'Formula Milk' ? 'block' : 'none';
+    document.getElementById('pumpedQuantityField').style.display = feedType === 'Pumped Milk' ? 'block' : 'none';
+}
+
+let allRecords = [];
 
 async function loadRecords() {
     const response = await fetch('/api/records');
     const records = await response.json();
+    allRecords = records;
+    const filter = document.getElementById('typeFilter');
+    const selectedType = filter.value;
+    filter.innerHTML = '<option value="all">All types</option>';
+    [...new Set(records.map(row => row.feed_type))].forEach(type => {
+        filter.innerHTML += `<option value="${type}">${type}</option>`;
+    });
+    filter.value = [...new Set(records.map(row => row.feed_type))].includes(selectedType) ? selectedType : 'all';
+    renderRecords();
+}
+
+function renderRecords() {
     const tbody = document.getElementById('recordsBody');
     tbody.innerHTML = '';
+    const selectedType = document.getElementById('typeFilter').value;
+    const records = selectedType === 'all' ? allRecords : allRecords.filter(row => row.feed_type === selectedType);
 
     records.forEach(row => {
+        const details = row.duration_minutes ? `${row.duration_minutes} min` : row.quantity_ml ? `${row.quantity_ml} ml` : '-';
         tbody.innerHTML += `
             <tr>
                 <td><span class="badge">${row.feed_type}</span></td>
                 <td>${row.date}</td>
                 <td>${row.time}</td>
+                <td>${details}</td>
             </tr>
         `;
     });
 }
+
+updateMeasurementFields();
 
 async function logout() {
     await fetch('/logout', { method: 'POST' });
