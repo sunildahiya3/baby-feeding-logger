@@ -64,6 +64,25 @@ def init_db():
         if 'quantity_ml' not in columns:
             cursor.execute('ALTER TABLE feeding_logs ADD COLUMN quantity_ml INTEGER')
 
+    if DATABASE_URL:
+        cursor.execute('CREATE TABLE IF NOT EXISTS schema_migrations (migration_name VARCHAR(100) PRIMARY KEY)')
+        cursor.execute("SELECT migration_name FROM schema_migrations WHERE migration_name = 'remove-latest-pumped-milk'")
+    else:
+        cursor.execute('CREATE TABLE IF NOT EXISTS schema_migrations (migration_name TEXT PRIMARY KEY)')
+        cursor.execute("SELECT migration_name FROM schema_migrations WHERE migration_name = 'remove-latest-pumped-milk'")
+    if cursor.fetchone() is None:
+        cursor.execute("SELECT id FROM feeding_logs WHERE feed_type = 'Pumped Milk' ORDER BY id DESC LIMIT 1")
+        latest_pumped = cursor.fetchone()
+        if latest_pumped:
+            if DATABASE_URL:
+                cursor.execute('DELETE FROM feeding_logs WHERE id = %s', (latest_pumped[0],))
+            else:
+                cursor.execute('DELETE FROM feeding_logs WHERE id = ?', (latest_pumped[0],))
+        if DATABASE_URL:
+            cursor.execute("INSERT INTO schema_migrations (migration_name) VALUES ('remove-latest-pumped-milk')")
+        else:
+            cursor.execute("INSERT INTO schema_migrations (migration_name) VALUES ('remove-latest-pumped-milk')")
+
     cursor.execute("SELECT id FROM feeding_logs WHERE feed_type = 'Breast Milk' AND time_str IN ('21 42', '21:42') ORDER BY id")
     duplicate_ids = [row[0] for row in cursor.fetchall()][1:]
     for duplicate_id in duplicate_ids:
