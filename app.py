@@ -1,6 +1,6 @@
 import os
 import sqlite3
-import psycopg2
+import psycopg
 from flask import Flask, render_template, request, jsonify, session
 from datetime import datetime
 import pytz
@@ -19,7 +19,7 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 def get_db_connection():
     if DATABASE_URL:
         # PostgreSQL on Render
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        conn = psycopg.connect(DATABASE_URL, sslmode='require')
     else:
         # SQLite fallback for local running
         conn = sqlite3.connect('baby_logger.db')
