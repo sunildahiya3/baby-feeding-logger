@@ -111,6 +111,19 @@
             border-radius: 6px;
             font-size: 0.95rem;
         }
+        .date-time-fields, .date-range-fields {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .date-time-fields label, .date-range-fields label {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            color: #64748b;
+            font-size: 0.85rem;
+        }
         .filter-select {
             margin: 0 0 8px;
         }
@@ -165,6 +178,10 @@
     <!-- TAB 1: LOG FEED -->
     <div id="logTab" class="tab-content active">
         <form id="feedForm">
+            <div class="date-time-fields">
+                <label for="eventDate">Date<input id="eventDate" type="date" value="{{ default_date }}" required></label>
+                <label for="eventTime">Time<input id="eventTime" type="time" value="{{ default_time }}" required></label>
+            </div>
             <div class="radio-group">
                 <label class="radio-card">
                     <input type="radio" name="feed_type" value="Breast Milk" checked>
@@ -205,6 +222,10 @@
 
     <!-- TAB 2: RECORDS -->
     <div id="recordsTab" class="tab-content">
+        <div class="date-range-fields">
+            <label for="startDate">From<input id="startDate" type="date" onchange="renderRecords()"></label>
+            <label for="endDate">To<input id="endDate" type="date" onchange="renderRecords()"></label>
+        </div>
         <select id="typeFilter" class="filter-select" aria-label="Filter records by type" onchange="renderRecords()">
             <option value="all">All types</option>
         </select>
@@ -240,7 +261,7 @@ function switchTab(tabId, event) {
 document.getElementById('feedForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const feedType = document.querySelector('input[name="feed_type"]:checked').value;
-    const body = { feed_type: feedType };
+    const body = { feed_type: feedType, date: document.getElementById('eventDate').value, time: document.getElementById('eventTime').value };
     if (feedType === 'Breast Milk') body.duration_minutes = document.getElementById('durationMinutes').value;
     if (feedType === 'Formula Milk') body.quantity_ml = document.getElementById('formulaQuantityMl').value;
     if (feedType === 'Pumped Milk') body.quantity_ml = document.getElementById('pumpedQuantityMl').value;
@@ -289,7 +310,14 @@ function renderRecords() {
     const tbody = document.getElementById('recordsBody');
     tbody.innerHTML = '';
     const selectedType = document.getElementById('typeFilter').value;
-    const records = selectedType === 'all' ? allRecords : allRecords.filter(row => row.feed_type === selectedType);
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const records = allRecords.filter(row => {
+        const [day, month, year] = row.date.split(' ');
+        const recordDate = `${year}-${month}-${day}`;
+        return (selectedType === 'all' || row.feed_type === selectedType) &&
+            (!startDate || recordDate >= startDate) && (!endDate || recordDate <= endDate);
+    });
 
     records.forEach(row => {
         const details = row.duration_minutes ? `${row.duration_minutes} min` : row.quantity_ml ? `${row.quantity_ml} ml` : '-';

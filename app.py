@@ -6,6 +6,7 @@ from datetime import datetime
 import pytz
 
 app = Flask(__name__)
+DB_NAME = 'baby_logger.db'
 
 # Secret key for session management
 app.secret_key = os.environ.get('SECRET_KEY', 'default-baby-logger-secret-key-12345')
@@ -22,7 +23,7 @@ def get_db_connection():
         conn = psycopg.connect(DATABASE_URL, sslmode='require')
     else:
         # SQLite fallback for local running
-        conn = sqlite3.connect('baby_logger.db')
+        conn = sqlite3.connect(DB_NAME)
         conn.row_factory = sqlite3.Row
     return conn
 
@@ -62,6 +63,14 @@ def init_db():
             cursor.execute('ALTER TABLE feeding_logs ADD COLUMN duration_minutes INTEGER')
         if 'quantity_ml' not in columns:
             cursor.execute('ALTER TABLE feeding_logs ADD COLUMN quantity_ml INTEGER')
+
+    cursor.execute("SELECT id FROM feeding_logs WHERE feed_type = 'Breast Milk' AND time_str IN ('21 42', '21:42') ORDER BY id")
+    duplicate_ids = [row[0] for row in cursor.fetchall()][1:]
+    for duplicate_id in duplicate_ids:
+        if DATABASE_URL:
+            cursor.execute('DELETE FROM feeding_logs WHERE id = %s', (duplicate_id,))
+        else:
+            cursor.execute('DELETE FROM feeding_logs WHERE id = ?', (duplicate_id,))
     
     conn.commit()
     cursor.close()
@@ -83,7 +92,8 @@ def is_authenticated():
 def home():
     if not is_authenticated():
         return render_template('login.html')
-    return render_template('index.html')
+    ist_now = get_ist_now()
+    return render_template('index.html', default_date=ist_now.strftime('%Y-%m-%d'), default_time=ist_now.strftime('%H:%M'))
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -110,6 +120,8 @@ def add_feed():
     feed_type = data.get('feed_type')
     duration_minutes = data.get('duration_minutes')
     quantity_ml = data.get('quantity_ml')
+    date_value = data.get('date')
+    time_value = data.get('time')
 
     if not feed_type:
         return jsonify({"status": "error", "message": "Feeding type required"}), 400
@@ -133,10 +145,15 @@ def add_feed():
     if feed_type in {'Formula Milk', 'Pumped Milk'} and quantity_ml is None:
         return jsonify({"status": "error", "message": "Quantity is required for milk"}), 400
 
-    # Get current timestamp strictly in IST
     ist_now = get_ist_now()
-    date_str = ist_now.strftime('%d %m %Y')  # DD MM YYYY
-    time_str = ist_now.strftime('%H %M')     # HH MM
+    try:
+        selected_date = datetime.strptime(date_value, '%Y-%m-%d').date() if date_value else ist_now.date()
+        selected_time = datetime.strptime(time_value, '%H:%M').time() if time_value else ist_now.time().replace(second=0, microsecond=0)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Enter a valid date and time"}), 400
+
+    date_str = selected_date.strftime('%d %m %Y')
+    time_str = selected_time.strftime('%H %M')
 
     conn = get_db_connection()
     cursor = conn.cursor()
