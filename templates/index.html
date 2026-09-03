@@ -129,6 +129,25 @@
         .filter-select {
             margin: 0 0 8px;
         }
+        .chart-panel {
+            margin-top: 18px;
+            padding-top: 14px;
+            border-top: 1px solid var(--border);
+        }
+        .chart-panel h2 {
+            font-size: 1rem;
+            margin: 0 0 10px;
+        }
+        .chart-wrapper {
+            position: relative;
+            height: 220px;
+        }
+        .empty-state {
+            color: #64748b;
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 20px 0;
+        }
         .btn-submit {
             width: 100%;
             padding: 14px;
@@ -174,7 +193,8 @@
 
     <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('logTab', event)">Log Feed</button>
-        <button class="tab-btn" onclick="switchTab('recordsTab', event)">Records</button>
+        <button class="tab-btn" onclick="switchTab('recordsTab', event)">Raw Data</button>
+        <button class="tab-btn" onclick="switchTab('graphsTab', event)">Graphs</button>
     </div>
 
     <!-- TAB 1: LOG FEED -->
@@ -222,7 +242,7 @@
         </form>
     </div>
 
-    <!-- TAB 2: RECORDS -->
+    <!-- TAB 2: RAW DATA -->
     <div id="recordsTab" class="tab-content">
         <div class="date-range-fields">
             <label for="startDate">From<input id="startDate" type="date" onchange="renderRecords()"></label>
@@ -245,7 +265,18 @@
             </tbody>
         </table>
     </div>
+
+    <!-- TAB 3: GRAPHS -->
+    <div id="graphsTab" class="tab-content">
+        <div class="date-range-fields">
+            <label for="graphStartDate">From<input id="graphStartDate" type="date" onchange="renderGraphs()"></label>
+            <label for="graphEndDate">To<input id="graphEndDate" type="date" onchange="renderGraphs()"></label>
+        </div>
+        <div id="chartsContainer"></div>
+    </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
 <script>
 function switchTab(tabId, event) {
@@ -257,6 +288,9 @@ function switchTab(tabId, event) {
 
     if (tabId === 'recordsTab') {
         loadRecords();
+    }
+    if (tabId === 'graphsTab') {
+        loadGraphs();
     }
 }
 
@@ -293,6 +327,7 @@ function updateMeasurementFields() {
 }
 
 let allRecords = [];
+let charts = [];
 
 async function loadRecords() {
     const response = await fetch('/api/records');
@@ -331,6 +366,75 @@ function renderRecords() {
                 <td>${details}</td>
             </tr>
         `;
+    });
+}
+
+async function loadGraphs() {
+    if (!allRecords.length) {
+        const response = await fetch('/api/records');
+        allRecords = await response.json();
+    }
+    renderGraphs();
+}
+
+function renderGraphs() {
+    charts.forEach(chart => chart.destroy());
+    charts = [];
+    const container = document.getElementById('chartsContainer');
+    container.innerHTML = '';
+    const startDate = document.getElementById('graphStartDate').value;
+    const endDate = document.getElementById('graphEndDate').value;
+    const colors = {
+        'Breast Milk': '#0284c7',
+        'Formula Milk': '#f97316',
+        'Pumped Milk': '#16a34a',
+        'Urination': '#7c3aed',
+        'Potty': '#dc2626'
+    };
+    const records = allRecords.filter(row => {
+        const [day, month, year] = row.date.split(' ');
+        const recordDate = `${year}-${month}-${day}`;
+        return (!startDate || recordDate >= startDate) && (!endDate || recordDate <= endDate);
+    });
+    const types = [...new Set(records.map(row => row.feed_type))];
+
+    if (!types.length) {
+        container.innerHTML = '<div class="empty-state">No records found for this date range.</div>';
+        return;
+    }
+
+    types.forEach(type => {
+        const panel = document.createElement('section');
+        panel.className = 'chart-panel';
+        panel.innerHTML = `<h2>${type}</h2><div class="chart-wrapper"><canvas></canvas></div>`;
+        container.appendChild(panel);
+        const typeRecords = records.filter(row => row.feed_type === type).reverse();
+        const values = typeRecords.map(row => row.duration_minutes || row.quantity_ml || 1);
+        const unit = type === 'Breast Milk' ? 'minutes' : ['Formula Milk', 'Pumped Milk'].includes(type) ? 'ml' : 'events';
+        charts.push(new Chart(panel.querySelector('canvas'), {
+            type: 'line',
+            data: {
+                labels: typeRecords.map(row => `${row.date} ${row.time}`),
+                datasets: [{
+                    label: unit,
+                    data: values,
+                    borderColor: colors[type] || '#475569',
+                    backgroundColor: colors[type] || '#475569',
+                    tension: 0.25,
+                    pointRadius: 5,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: unit } },
+                    x: { ticks: { maxRotation: 45, minRotation: 0 } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        }));
     });
 }
 
