@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Baby Feeding Logger</title>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --primary: #0284c7;
+            --text: #1e293b;
+            --border: #e2e8f0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 480px;
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            padding: 24px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        h1 {
+            font-size: 1.25rem;
+            margin: 0;
+            color: var(--primary);
+        }
+        .btn-logout {
+            background: none;
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: none;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+        }
+        .tab-btn.active {
+            color: var(--primary);
+            border-bottom: 2px solid var(--primary);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .radio-card {
+            display: flex;
+            align-items: center;
+            padding: 14px 16px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .radio-card input {
+            margin-right: 12px;
+            width: 18px;
+            height: 18px;
+        }
+        .btn-submit {
+            width: 100%;
+            padding: 14px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+        th {
+            background-color: #f1f5f9;
+        }
+        .badge {
+            background: #e0f2fe;
+            color: #0369a1;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>👶 Baby Feeding Logger</h1>
+        <button class="btn-logout" onclick="logout()">Logout</button>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('logTab', event)">Log Feed</button>
+        <button class="tab-btn" onclick="switchTab('recordsTab', event)">Feeding Records</button>
+    </div>
+
+    <!-- TAB 1: LOG FEED -->
+    <div id="logTab" class="tab-content active">
+        <form id="feedForm">
+            <div class="radio-group">
+                <label class="radio-card">
+                    <input type="radio" name="feed_type" value="Breast Milk" checked>
+                    <span>Breast Milk</span>
+                </label>
+                <label class="radio-card">
+                    <input type="radio" name="feed_type" value="Formula Milk">
+                    <span>Formula Milk</span>
+                </label>
+                <label class="radio-card">
+                    <input type="radio" name="feed_type" value="Solid Food">
+                    <span>Solid Food</span>
+                </label>
+            </div>
+            <button type="submit" class="btn-submit">Record Timing (IST)</button>
+        </form>
+    </div>
+
+    <!-- TAB 2: RECORDS -->
+    <div id="recordsTab" class="tab-content">
+        <table>
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Date (DD MM YYYY)</th>
+                    <th>Time (HH MM IST)</th>
+                </tr>
+            </thead>
+            <tbody id="recordsBody">
+                <!-- Records render dynamically -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function switchTab(tabId, event) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    
+    document.getElementById(tabId).classList.add('active');
+    if (event) event.target.classList.add('active');
+
+    if (tabId === 'recordsTab') {
+        loadRecords();
+    }
+}
+
+document.getElementById('feedForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const feedType = document.querySelector('input[name="feed_type"]:checked').value;
+
+    const response = await fetch('/api/feed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feed_type: feedType })
+    });
+
+    if (response.ok) {
+        alert('Feeding logged in IST!');
+        switchTab('recordsTab');
+    }
+});
+
+async function loadRecords() {
+    const response = await fetch('/api/records');
+    const records = await response.json();
+    const tbody = document.getElementById('recordsBody');
+    tbody.innerHTML = '';
+
+    records.forEach(row => {
+        tbody.innerHTML += `
+            <tr>
+                <td><span class="badge">${row.feed_type}</span></td>
+                <td>${row.date}</td>
+                <td>${row.time}</td>
+            </tr>
+        `;
+    });
+}
+
+async function logout() {
+    await fetch('/logout', { method: 'POST' });
+    window.location.reload();
+}
+</script>
+
+</body>
+</html>
