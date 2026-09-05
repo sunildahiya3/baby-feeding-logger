@@ -438,6 +438,11 @@ function renderGraphs() {
         const suffix = day % 10 === 1 && day !== 11 ? 'st' : day % 10 === 2 && day !== 12 ? 'nd' : day % 10 === 3 && day !== 13 ? 'rd' : 'th';
         return `${day}${suffix} ${monthName} ${year} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
     };
+    const allTimestamps = sortedRecords.map(toTimestamp);
+    const earliestTimestamp = Math.min(...allTimestamps);
+    const latestTimestamp = Math.max(...allTimestamps);
+    const chartMin = earliestTimestamp === latestTimestamp ? earliestTimestamp - 3600000 : earliestTimestamp;
+    const chartMax = earliestTimestamp === latestTimestamp ? latestTimestamp + 3600000 : latestTimestamp;
     types.forEach(type => {
         const typeRecords = sortedRecords.filter(row => row.feed_type === type);
         const hasVolume = typeRecords.some(row => row.quantity_ml !== null && row.quantity_ml !== undefined);
@@ -455,10 +460,6 @@ function renderGraphs() {
         panel.className = 'chart-panel';
         panel.innerHTML = `<h2>${type} (${hasVolume ? 'ml' : 'instances'})</h2><div class="chart-wrapper"><canvas></canvas></div>`;
         container.appendChild(panel);
-        const firstTimestamp = points[0].x;
-        const lastTimestamp = points[points.length - 1].x;
-        const chartMin = firstTimestamp === lastTimestamp ? firstTimestamp - 3600000 : firstTimestamp;
-        const chartMax = firstTimestamp === lastTimestamp ? lastTimestamp + 3600000 : lastTimestamp;
         charts.push(new Chart(panel.querySelector('canvas'), {
             type: 'line',
             data: {
@@ -467,9 +468,9 @@ function renderGraphs() {
                     data: points,
                     borderColor: colors[type] || '#475569',
                     backgroundColor: colors[type] || '#475569',
-                    tension: 0.25,
+                    showLine: false,
                     pointRadius: 4,
-                    stepped: !hasVolume
+                    pointHoverRadius: 6
                 }]
             },
             options: {
