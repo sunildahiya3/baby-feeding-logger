@@ -423,57 +423,77 @@ function renderGraphs() {
         return;
     }
 
-    const panel = document.createElement('section');
-    panel.className = 'chart-panel';
-    panel.innerHTML = '<h2>All records</h2><div class="chart-wrapper"><canvas></canvas></div>';
-    container.appendChild(panel);
-
     const sortedRecords = [...records].reverse();
-    const timestamps = [...new Set(sortedRecords.map(row => `${row.date} ${row.time}`))];
     const types = [...new Set(sortedRecords.map(row => row.feed_type))];
-    const formatTimestamp = timestamp => {
-        const [day, month, year, hour, minute] = timestamp.split(/[ :]/);
-        const date = new Date(Number(year), Number(month) - 1, Number(day));
-        const monthName = date.toLocaleString('en-US', { month: 'short' });
-        const suffix = day % 10 === 1 && day !== '11' ? 'st' : day % 10 === 2 && day !== '12' ? 'nd' : day % 10 === 3 && day !== '13' ? 'rd' : 'th';
-        return `${Number(day)}${suffix} ${monthName} ${year} ${hour}:${minute}`;
+    const toTimestamp = row => {
+        const [day, month, year] = row.date.split(' ').map(Number);
+        const [hour, minute] = row.time.split(' ').map(Number);
+        return new Date(year, month - 1, day, hour, minute).getTime();
     };
-    const datasets = types.map(type => {
+    const formatTimestamp = value => {
+        const date = new Date(value);
+        const day = date.getDate();
+        const monthName = date.toLocaleString('en-US', { month: 'short' });
+        const year = date.getFullYear();
+        const suffix = day % 10 === 1 && day !== 11 ? 'st' : day % 10 === 2 && day !== 12 ? 'nd' : day % 10 === 3 && day !== 13 ? 'rd' : 'th';
+        return `${day}${suffix} ${monthName} ${year} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    };
+    types.forEach(type => {
         const typeRecords = sortedRecords.filter(row => row.feed_type === type);
         const hasVolume = typeRecords.some(row => row.quantity_ml !== null && row.quantity_ml !== undefined);
-        return {
-            label: `${type} (${hasVolume ? 'ml' : 'instances'})`,
-            data: timestamps.map(timestamp => {
-                const matchingRecords = typeRecords.filter(row => `${row.date} ${row.time}` === timestamp);
-                if (hasVolume) {
-                    return matchingRecords.reduce((total, row) => total + (row.quantity_ml || 0), 0) || null;
-                }
-                return matchingRecords.length || null;
-            }),
-            borderColor: colors[type] || '#475569',
-            backgroundColor: colors[type] || '#475569',
-            yAxisID: hasVolume ? 'ml' : 'instances',
-            tension: 0.25,
-            pointRadius: 4,
-            spanGaps: true,
-            stepped: !hasVolume
-        };
-    });
-
-    charts.push(new Chart(panel.querySelector('canvas'), {
-        type: 'line',
-        data: { labels: timestamps.map(formatTimestamp), datasets },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                ml: { beginAtZero: true, position: 'left', title: { display: true, text: 'Volume (ml)' } },
-                instances: { beginAtZero: true, position: 'right', title: { display: true, text: 'Number of instances' }, grid: { drawOnChartArea: false }, ticks: { precision: 0 } },
-                x: { ticks: { maxRotation: 45, minRotation: 0 } }
+        const groupedRecords = {};
+        typeRecords.forEach(row => {
+            const timestamp = toTimestamp(row);
+            if (!groupedRecords[timestamp]) groupedRecords[timestamp] = [];
+            groupedRecords[timestamp].push(row);
+        });
+        const points = Object.entries(groupedRecords).map(([timestamp, rows]) => ({
+            x: Number(timestamp),
+            y: hasVolume ? rows.reduce((total, row) => total + (row.quantity_ml || 0), 0) : rows.length
+        }));
+        const panel = document.createElement('section');
+        panel.className = 'chart-panel';
+        panel.innerHTML = `<h2>${type} (${hasVolume ? 'ml' : 'instances'})</h2><div class="chart-wrapper"><canvas></canvas></div>`;
+        container.appendChild(panel);
+        const firstTimestamp = points[0].x;
+        const lastTimestamp = points[points.length - 1].x;
+        const chartMin = firstTimestamp === lastTimestamp ? firstTimestamp - 3600000 : firstTimestamp;
+        const chartMax = firstTimestamp === lastTimestamp ? lastTimestamp + 3600000 : lastTimestamp;
+        charts.push(new Chart(panel.querySelector('canvas'), {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: `${type} (${hasVolume ? 'ml' : 'instances'})`,
+                    data: points,
+                    borderColor: colors[type] || '#475569',
+                    backgroundColor: colors[type] || '#475569',
+                    tension: 0.25,
+                    pointRadius: 4,
+                    stepped: !hasVolume
+                }]
             },
-            plugins: { legend: { display: true, position: 'bottom' } }
-        }
-    }));
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: hasVolume ? 'Volume (ml)' : 'Number of instances' }, ticks: { precision: 0 } },
+                    x: {
+                        type: 'linear',
+                        min: chartMin,
+                        max: chartMax,
+                        ticks: {
+                            stepSize: 3600000,
+                            callback: value => formatTimestamp(value),
+                            maxRotation: 45,
+                            minRotation: 0
+                        },
+                        title: { display: true, text: 'Date and time (one-hour intervals)' }
+                    }
+                },
+                plugins: { legend: { display: false }, tooltip: { callbacks: { title: items => formatTimestamp(items[0].parsed.x) } } }
+            }
+        }));
+    });
 }
 
 updateMeasurementFields();
