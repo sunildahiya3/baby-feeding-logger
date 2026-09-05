@@ -230,6 +230,22 @@
                     <input id="pumpedQuantityMl" type="number" min="1" step="1" placeholder="e.g. 90">
                 </div>
                 <label class="radio-card">
+                    <input type="radio" name="feed_type" value="Calcium">
+                    <span>Calcium</span>
+                </label>
+                <div id="calciumQuantityField" class="measurement">
+                    <label for="calciumQuantityMl">Dose (ml)</label>
+                    <input id="calciumQuantityMl" type="number" min="1" step="1" placeholder="e.g. 5">
+                </div>
+                <label class="radio-card">
+                    <input type="radio" name="feed_type" value="Sun Sip">
+                    <span>Sun Sip</span>
+                </label>
+                <div id="sunSipQuantityField" class="measurement">
+                    <label for="sunSipQuantityMl">Dose (ml)</label>
+                    <input id="sunSipQuantityMl" type="number" min="1" step="1" placeholder="e.g. 5">
+                </div>
+                <label class="radio-card">
                     <input type="radio" name="feed_type" value="Urination">
                     <span>Urination</span>
                 </label>
@@ -301,6 +317,8 @@ document.getElementById('feedForm').addEventListener('submit', async function(e)
     if (feedType === 'Breast Milk') body.duration_minutes = document.getElementById('durationMinutes').value;
     if (feedType === 'Formula Milk') body.quantity_ml = document.getElementById('formulaQuantityMl').value;
     if (feedType === 'Pumped Milk') body.quantity_ml = document.getElementById('pumpedQuantityMl').value;
+    if (feedType === 'Calcium') body.quantity_ml = document.getElementById('calciumQuantityMl').value;
+    if (feedType === 'Sun Sip') body.quantity_ml = document.getElementById('sunSipQuantityMl').value;
 
     const response = await fetch('/api/feed', {
         method: 'POST',
@@ -324,6 +342,8 @@ function updateMeasurementFields() {
     document.getElementById('durationField').style.display = feedType === 'Breast Milk' ? 'block' : 'none';
     document.getElementById('formulaQuantityField').style.display = feedType === 'Formula Milk' ? 'block' : 'none';
     document.getElementById('pumpedQuantityField').style.display = feedType === 'Pumped Milk' ? 'block' : 'none';
+    document.getElementById('calciumQuantityField').style.display = feedType === 'Calcium' ? 'block' : 'none';
+    document.getElementById('sunSipQuantityField').style.display = feedType === 'Sun Sip' ? 'block' : 'none';
 }
 
 let allRecords = [];
@@ -388,6 +408,8 @@ function renderGraphs() {
         'Breast Milk': '#0284c7',
         'Formula Milk': '#f97316',
         'Pumped Milk': '#16a34a',
+        'Calcium': '#db2777',
+        'Sun Sip': '#ca8a04',
         'Urination': '#7c3aed',
         'Potty': '#dc2626'
     };
@@ -396,46 +418,64 @@ function renderGraphs() {
         const recordDate = `${year}-${month}-${day}`;
         return (!startDate || recordDate >= startDate) && (!endDate || recordDate <= endDate);
     });
-    const types = [...new Set(records.map(row => row.feed_type))];
-
-    if (!types.length) {
+    if (!records.length) {
         container.innerHTML = '<div class="empty-state">No records found for this date range.</div>';
         return;
     }
 
-    types.forEach(type => {
-        const panel = document.createElement('section');
-        panel.className = 'chart-panel';
-        panel.innerHTML = `<h2>${type}</h2><div class="chart-wrapper"><canvas></canvas></div>`;
-        container.appendChild(panel);
-        const typeRecords = records.filter(row => row.feed_type === type).reverse();
-        const values = typeRecords.map(row => row.duration_minutes || row.quantity_ml || 1);
-        const unit = type === 'Breast Milk' ? 'minutes' : ['Formula Milk', 'Pumped Milk'].includes(type) ? 'ml' : 'events';
-        charts.push(new Chart(panel.querySelector('canvas'), {
-            type: 'line',
-            data: {
-                labels: typeRecords.map(row => `${row.date} ${row.time}`),
-                datasets: [{
-                    label: unit,
-                    data: values,
-                    borderColor: colors[type] || '#475569',
-                    backgroundColor: colors[type] || '#475569',
-                    tension: 0.25,
-                    pointRadius: 5,
-                    fill: false
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: { beginAtZero: true, title: { display: true, text: unit } },
-                    x: { ticks: { maxRotation: 45, minRotation: 0 } }
-                },
-                plugins: { legend: { display: false } }
-            }
-        }));
+    const panel = document.createElement('section');
+    panel.className = 'chart-panel';
+    panel.innerHTML = '<h2>All records</h2><div class="chart-wrapper"><canvas></canvas></div>';
+    container.appendChild(panel);
+
+    const sortedRecords = [...records].reverse();
+    const timestamps = [...new Set(sortedRecords.map(row => `${row.date} ${row.time}`))];
+    const types = [...new Set(sortedRecords.map(row => row.feed_type))];
+    const formatTimestamp = timestamp => {
+        const [day, month, year, hour, minute] = timestamp.split(/[ :]/);
+        const date = new Date(Number(year), Number(month) - 1, Number(day));
+        const monthName = date.toLocaleString('en-US', { month: 'short' });
+        const suffix = day % 10 === 1 && day !== '11' ? 'st' : day % 10 === 2 && day !== '12' ? 'nd' : day % 10 === 3 && day !== '13' ? 'rd' : 'th';
+        return `${Number(day)}${suffix} ${monthName} ${year} ${hour}:${minute}`;
+    };
+    const datasets = types.filter(type => ['Formula Milk', 'Pumped Milk', 'Calcium', 'Sun Sip'].includes(type)).map(type => ({
+        label: type,
+        data: timestamps.map(timestamp => {
+            const record = sortedRecords.find(row => row.feed_type === type && `${row.date} ${row.time}` === timestamp);
+            return record ? record.quantity_ml : null;
+        }),
+        borderColor: colors[type],
+        backgroundColor: colors[type],
+        yAxisID: 'ml',
+        tension: 0.25,
+        pointRadius: 4,
+        spanGaps: true
+    }));
+    datasets.push({
+        label: 'Instances',
+        data: timestamps.map(timestamp => sortedRecords.filter(row => `${row.date} ${row.time}` === timestamp).length),
+        borderColor: '#475569',
+        backgroundColor: '#475569',
+        yAxisID: 'instances',
+        tension: 0.25,
+        pointRadius: 4,
+        stepped: true
     });
+
+    charts.push(new Chart(panel.querySelector('canvas'), {
+        type: 'line',
+        data: { labels: timestamps.map(formatTimestamp), datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                ml: { beginAtZero: true, position: 'left', title: { display: true, text: 'Volume (ml)' } },
+                instances: { beginAtZero: true, position: 'right', title: { display: true, text: 'Number of instances' }, grid: { drawOnChartArea: false }, ticks: { precision: 0 } },
+                x: { ticks: { maxRotation: 45, minRotation: 0 } }
+            },
+            plugins: { legend: { display: true, position: 'bottom' } }
+        }
+    }));
 }
 
 updateMeasurementFields();

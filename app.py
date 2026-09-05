@@ -145,7 +145,7 @@ def add_feed():
     if not feed_type:
         return jsonify({"status": "error", "message": "Feeding type required"}), 400
 
-    valid_types = {'Breast Milk', 'Formula Milk', 'Pumped Milk', 'Urination', 'Potty'}
+    valid_types = {'Breast Milk', 'Formula Milk', 'Pumped Milk', 'Calcium', 'Sun Sip', 'Urination', 'Potty'}
     if feed_type not in valid_types:
         return jsonify({"status": "error", "message": "Invalid event type"}), 400
 
@@ -161,8 +161,8 @@ def add_feed():
         return jsonify({"status": "error", "message": "Quantity must be greater than zero"}), 400
     if feed_type == 'Breast Milk' and duration_minutes is None:
         return jsonify({"status": "error", "message": "Duration is required for Breast Milk"}), 400
-    if feed_type in {'Formula Milk', 'Pumped Milk'} and quantity_ml is None:
-        return jsonify({"status": "error", "message": "Quantity is required for milk"}), 400
+    if feed_type in {'Formula Milk', 'Pumped Milk', 'Calcium', 'Sun Sip'} and quantity_ml is None:
+        return jsonify({"status": "error", "message": "Quantity is required for milk or medicine"}), 400
 
     ist_now = get_ist_now()
     try:
